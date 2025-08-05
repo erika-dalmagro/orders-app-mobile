@@ -1,6 +1,6 @@
 import React from 'react';
-import ProductManager from './components/ProductManager';
+import AppNavigator from './navigation/AppNavigator';
 
 export default function App() {
-  return <ProductManager />;
+  return <AppNavigator />;
 }
