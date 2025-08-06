@@ -4,11 +4,10 @@ import {
   Text,
   Button,
   StyleSheet,
-  ScrollView,
-  SafeAreaView,
   Alert,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import axios from "axios";
 import { Picker } from "@react-native-picker/picker";
@@ -21,32 +20,48 @@ interface CreateOrderFormProps {
 }
 
 export default function CreateOrderForm({ onOrderCreated }: CreateOrderFormProps) {
+  const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedItems, setSelectedItems] = useState<Partial<OrderItem>[]>([]);
-  const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+
+  const [selectedTableId, setSelectedTableId] = useState<number | string>("");
 
   useEffect(() => {
-    axios
-      .get(`${API_URL}/products`)
-      .then((res) => setProducts(res.data))
-      .catch(() => Alert.alert("Error", "Failed to load products."));
+    Promise.all([
+        axios.get(`${API_URL}/products`),
+        axios.get(`${API_URL}/tables/available`)
+    ]).then(([productsRes, tablesRes]) => {
+        setProducts(productsRes.data || []);
+        const availableTables = tablesRes.data || [];
+        setTables(availableTables);
 
-    loadAvailableTables();
+        if (availableTables.length > 0) {
+            setSelectedTableId(availableTables[0].id);
+        } else {
+            setSelectedTableId("");
+        }
+    }).catch((err) => {
+        console.error(err);
+        Alert.alert("Error", "Failed to load initial data. Make sure the server is running.");
+    }).finally(() => {
+        setLoading(false);
+    });
   }, []);
 
   const loadAvailableTables = () => {
     axios
       .get(`${API_URL}/tables/available`)
       .then((res) => {
-        setTables(res.data);
-        if (res.data?.length > 0) {
-          setSelectedTableId(res.data[0].id);
+        const availableTables = res.data || [];
+        setTables(availableTables);
+        if (availableTables.length > 0) {
+          setSelectedTableId(availableTables[0].id);
         } else {
-          setSelectedTableId(null);
+          setSelectedTableId("");
         }
       })
-      .catch(() => Alert.alert("Error", "Failed to load available tables."));
+      .catch(() => Alert.alert("Error", "Failed to refresh available tables."));
   };
 
   const addItem = () => {
@@ -54,7 +69,6 @@ export default function CreateOrderForm({ onOrderCreated }: CreateOrderFormProps
       Alert.alert("Error", "Products not loaded yet.");
       return;
     }
-    // Add a new item with the first product as default
     setSelectedItems([...selectedItems, { product_id: products[0].id, quantity: 1 }]);
   };
 
@@ -91,10 +105,10 @@ export default function CreateOrderForm({ onOrderCreated }: CreateOrderFormProps
         date: orderDate,
       });
 
-        Alert.alert("Success", "Order created successfully!");
-        setSelectedItems([]);
-        loadAvailableTables();
-        onOrderCreated();
+      Alert.alert("Success", "Order created successfully!");
+      setSelectedItems([]);
+      loadAvailableTables();
+      onOrderCreated();
     } catch (err: any) {
         const errorMessage = err.response?.data?.error || "Error creating order";
         Alert.alert("Error", errorMessage);
@@ -102,71 +116,81 @@ export default function CreateOrderForm({ onOrderCreated }: CreateOrderFormProps
     }
   };
 
+  if (loading) {
+    return (
+        <View style={styles.centered}>
+            <ActivityIndicator size="large" />
+            <Text>Loading form...</Text>
+        </View>
+    )
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
-        <Text style={styles.title}>Create New Order</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Create New Order</Text>
 
-        <View style={styles.formSection}>
-          <Text style={styles.label}>Table:</Text>
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={selectedTableId}
-              onValueChange={(itemValue) => setSelectedTableId(itemValue)}
-              enabled={tables.length > 0}
-            >
-              {tables.map((table) => (
-                <Picker.Item key={table.id} label={`${table.name} (Cap: ${table.capacity})`} value={table.id} />
-              ))}
-            </Picker>
-          </View>
-        </View>
-
-        <View style={styles.formSection}>
-            <View style={styles.itemsHeader}>
-                <Text style={styles.label}>Items</Text>
-                <Button title="+ Add Product" onPress={addItem} disabled={products.length === 0} />
-            </View>
-
-            {selectedItems.map((item, index) => (
-                <View key={index} style={styles.itemRow}>
-                    <View style={styles.pickerContainer}>
-                        <Picker
-                            selectedValue={item.product_id}
-                            onValueChange={(value) => updateItem(index, "product_id", value)}
-                        >
-                            {products.map((p) => (
-                                <Picker.Item key={p.id} label={`${p.name} (Stock: ${p.stock})`} value={p.id} />
-                            ))}
-                        </Picker>
-                    </View>
-                    <TextInput
-                        style={styles.quantityInput}
-                        value={String(item.quantity || 1)}
-                        onChangeText={(text) => updateItem(index, "quantity", parseInt(text) || 1)}
-                        keyboardType="number-pad"
-                    />
-                    <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeButton}>
-                        <Text style={styles.removeButtonText}>X</Text>
-                    </TouchableOpacity>
-                </View>
+      <View style={styles.formSection}>
+        <Text style={styles.label}>Table:</Text>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={selectedTableId}
+            onValueChange={(itemValue) => setSelectedTableId(itemValue)}
+            enabled={tables.length > 0}
+          >
+            {tables.length === 0 && <Picker.Item label="No tables available" value="" />}
+            {tables.map((table) => (
+              <Picker.Item key={table.id} label={`${table.name} (Cap: ${table.capacity})`} value={table.id} />
             ))}
+          </Picker>
         </View>
+      </View>
 
-        <Button
-          title="Create Order"
-          onPress={handleSubmit}
-          disabled={!selectedTableId || selectedItems.length === 0}
-        />
-      </ScrollView>
-    </SafeAreaView>
+      <View style={styles.formSection}>
+          <View style={styles.itemsHeader}>
+              <Text style={styles.label}>Items</Text>
+              <Button title="+ Add Product" onPress={addItem} disabled={products.length === 0} />
+          </View>
+
+          {selectedItems.map((item, index) => (
+              <View key={index} style={styles.itemRow}>
+                  <View style={styles.pickerContainer}>
+                      <Picker
+                          selectedValue={item.product_id}
+                          onValueChange={(value) => updateItem(index, "product_id", value)}
+                      >
+                          {products.map((p) => (
+                              <Picker.Item key={p.id} label={`${p.name} (Stock: ${p.stock})`} value={p.id} />
+                          ))}
+                      </Picker>
+                  </View>
+                  <TextInput
+                      style={styles.quantityInput}
+                      value={String(item.quantity || 1)}
+                      onChangeText={(text) => updateItem(index, "quantity", parseInt(text) || 1)}
+                      keyboardType="number-pad"
+                  />
+                  <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeButton}>
+                      <Text style={styles.removeButtonText}>X</Text>
+                  </TouchableOpacity>
+              </View>
+          ))}
+      </View>
+
+      <Button
+        title="Create Order"
+        onPress={handleSubmit}
+        disabled={!selectedTableId || selectedItems.length === 0}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-      flex: 1,
-      backgroundColor: '#f0f2f5',
+    centered: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
     },
     container: {
       padding: 15,
@@ -229,4 +253,4 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 16,
     }
-  });
+});
