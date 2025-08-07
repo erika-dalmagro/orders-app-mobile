@@ -121,10 +121,12 @@ const styles = StyleSheet.create({
         marginTop: 20,
     },
     title: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        marginBottom: 10,
-    },
+      fontSize: 24,
+      fontWeight: "bold",
+      marginBottom: 20,
+      textAlign: "center",
+      color: '#333',
+  },
     orderCard: {
         backgroundColor: 'white',
         borderRadius: 8,
